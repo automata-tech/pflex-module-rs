@@ -1,0 +1,262 @@
+version: 2.1
+
+orbs:
+  semantic-release: automata-tech/semantic-release@1
+  atmta-python: automata-tech/python@1
+  python: circleci/python@2
+  aws-ecr: circleci/aws-ecr@9
+  aws-cli: circleci/aws-cli@5
+  sonarcloud: sonarsource/sonarcloud@3.0.0
+
+executors:
+  python:
+    docker:
+      - image: cimg/python:3.12.2
+
+alias:
+  pr-only-filters: &pr-only-filters
+    branches:
+      ignore: main
+  main-only-filters: &main-only-filters
+    branches:
+      only: main
+  semver-tags-only-filters: &semver-tags-only-filters
+    branches:
+      ignore: /.*/
+    tags:
+      only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
+
+workflows:
+  main:
+    jobs:
+      - build_arm64_container:
+          name: build-arm64-docker-image-on-PR
+          filters: *pr-only-filters
+          context: ["aws-oidc-roles", "github-automata"]
+          dockerfile: docker/Dockerfile
+          version: ${CIRCLE_SHA1:0:7}-arm64
+          # requires:
+          # - tests
+      - build_amd64_container:
+          name: build-amd64-docker-image-on-PR
+          filters: *pr-only-filters
+          context: ["aws-oidc-roles", "github-automata"]
+          dockerfile: docker/Dockerfile
+          version: ${CIRCLE_SHA1:0:7}-amd64
+          # requires:
+          # - tests
+      - combine_docker_containers_and_push:
+          name: combine-arm-and-amd-images-on-PR
+          filters: *pr-only-filters
+          context: ["aws-oidc-roles", "github-automata"]
+          output_tag: ${CIRCLE_SHA1:0:7}
+          tags_to_combine: ${CIRCLE_SHA1:0:7}-amd64 ${CIRCLE_SHA1:0:7}-arm64
+          requires:
+            - build-arm64-docker-image-on-PR
+            - build-amd64-docker-image-on-PR
+
+      ####################
+      #   main branch    #
+      ####################
+      - semantic-release/release:
+          context:
+            - semantic-release
+            - Slack
+          filters: *main-only-filters
+
+  ####################
+  #   semver tags    #
+  ####################
+
+  semver-release:
+    when:
+      and:
+        - matches:
+            pattern: /^v\d+\.\d+\.\d+$/
+            value: << pipeline.git.tag >>
+    jobs:
+      - build_arm64_container:
+          name: build-arm64-docker-image-SEMVER
+          filters: *semver-tags-only-filters
+          context: ["aws-oidc-roles", "github-automata"]
+          dockerfile: docker/Dockerfile
+          version: << pipeline.git.tag >>-arm64
+
+      - build_amd64_container:
+          name: build-amd64-docker-image-SEMVER
+          filters: *semver-tags-only-filters
+          context: ["aws-oidc-roles", "github-automata"]
+          dockerfile: docker/Dockerfile
+          version: << pipeline.git.tag >>-amd64
+
+      - combine_docker_containers_and_push:
+          name: combine-arm-and-amd-images-SEMVER
+          filters: *semver-tags-only-filters
+          context: ["aws-oidc-roles", "github-automata"]
+          output_tag: << pipeline.git.tag >>
+          tags_to_combine: << pipeline.git.tag >>-amd64 << pipeline.git.tag >>-arm64
+          requires:
+            - build-amd64-docker-image-SEMVER
+            - build-arm64-docker-image-SEMVER
+
+jobs:
+  combine_docker_containers_and_push:
+    environment:
+      AWS_DEFAULT_REGION: eu-west-1
+    working_directory: ~/project
+    docker:
+      - image: cimg/base:2024.02
+    parameters:
+      output_tag:
+        type: string
+      tags_to_combine:
+        type: string
+    steps:
+      - setup_remote_docker
+      - checkout
+      - aws-cli/setup:
+          role_arn: ${AWS_OIDC_ROLE_ARN_ATMTA028}
+          region: ${AWS_DEFAULT_REGION}
+      - run:
+          name: set AWS_ACCOUNT_ID env variable
+          command: |
+            echo "export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)" >> $BASH_ENV
+      - aws-ecr/ecr_login:
+          region: ${AWS_DEFAULT_REGION}
+          account_id: $AWS_ACCOUNT_ID
+      - run:
+          name: combine images
+          command: |
+            #!/usr/bin/env bash
+            set -ex
+
+            repo="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${CIRCLE_PROJECT_REPONAME}"
+            output_tag="${repo}:<<parameters.output_tag>>"
+
+            resolved_tags=""
+            IFS=' ' read -ra tags \<<< "<<parameters.tags_to_combine>>"
+            for tag in "${tags[@]}"; do
+              new_resolved_tags="${resolved_tags}${repo}:${tag} "
+              resolved_tags="${new_resolved_tags}"
+            done
+
+            docker manifest create $output_tag $resolved_tags
+            docker manifest push $output_tag
+
+  build_arm64_container:
+    environment:
+      AWS_DEFAULT_REGION: eu-west-1
+    working_directory: ~/project
+    machine:
+      image: ubuntu-2204:2023.07.1
+    resource_class: arm.medium
+    parameters:
+      version:
+        type: string
+      dockerfile:
+        type: string
+    steps:
+      - checkout
+      - atmta-python/login_bash
+      - run:
+          name: Export poetry password secret
+          command: |
+            echo "export POETRY_HTTP_BASIC_AUTOMATA_PASSWORD=$CODEARTIFACT_AUTH_TOKEN" >> $BASH_ENV
+      - run:
+          name: set poetry token to tmpfile
+          command: |
+            echo $CODEARTIFACT_AUTH_TOKEN > /tmp/docker-secrets-codeartifact_auth_token
+      - run:
+          name: set AWS_ACCOUNT_ID env variable
+          command: |
+            echo "export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)" >> $BASH_ENV
+      - aws-ecr/build_and_push_image:
+          account_id: $AWS_ACCOUNT_ID
+          dockerfile: <<parameters.dockerfile>>
+          auth:
+            - aws-cli/setup:
+                role_arn: ${AWS_OIDC_ROLE_ARN_ATMTA028}
+                role_session_name: ${CIRCLE_PROJECT_REPONAME}
+          region: ${AWS_DEFAULT_REGION}
+          repo: ${CIRCLE_PROJECT_REPONAME}
+          tag: <<parameters.version>>
+          platform: linux/arm64
+          extra_build_args: >-
+            --provenance=false
+            --sbom=false
+            --build-arg PYTHON_VERSION=${CI_TEMPLATE_PYTHON_VERSION}
+            --build-arg POETRY_VERSION=${CI_TEMPLATE_POETRY_VERSION}
+            --build-arg VERSION=${CI_TEMPLATE_VERSION}
+            --secret id=POETRY_HTTP_BASIC_AUTOMATA_PASSWORD
+            --target=final
+          create_repo: true
+          lifecycle_policy_path: .circleci/ecr-lifecycle-policy.json
+          repo_policy_path: .circleci/ecr-repo-policy.json
+          set_repo_policy: true
+          repo_scan_on_push: true
+          skip_when_tags_exist: true
+      - run:
+          name: remove buildx builder
+          command: |
+            # There is a bug in circlci where it attempts to create the same builder multiple times.
+            # This is a workaround to remove the builder before creating it again.
+            docker buildx rm DLC_builder || true
+
+  build_amd64_container:
+    environment:
+      AWS_DEFAULT_REGION: eu-west-1
+    working_directory: ~/project
+    docker:
+      - image: cimg/python:3.10.14
+    parameters:
+      version:
+        type: string
+      dockerfile:
+        type: string
+    steps:
+      - setup_remote_docker
+      - checkout
+      - atmta-python/login_bash
+      - run:
+          name: Export poetry password secret
+          command: |
+            echo "export POETRY_HTTP_BASIC_AUTOMATA_PASSWORD=$CODEARTIFACT_AUTH_TOKEN" >> $BASH_ENV
+      - run:
+          name: set poetry token to tmpfile
+          command: |
+            echo $CODEARTIFACT_AUTH_TOKEN > /tmp/docker-secrets-codeartifact_auth_token
+      - run:
+          name: set AWS_ACCOUNT_ID env variable
+          command: |
+            echo "export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)" >> $BASH_ENV
+      - aws-ecr/build_and_push_image:
+          account_id: $AWS_ACCOUNT_ID
+          dockerfile: <<parameters.dockerfile>>
+          auth:
+            - aws-cli/setup:
+                role_arn: ${AWS_OIDC_ROLE_ARN_ATMTA028}
+                role_session_name: ${CIRCLE_PROJECT_REPONAME}
+          region: ${AWS_DEFAULT_REGION}
+          repo: ${CIRCLE_PROJECT_REPONAME}
+          tag: <<parameters.version>>
+          platform: linux/amd64
+          extra_build_args: >-
+            --provenance=false
+            --sbom=false
+            --build-arg PYTHON_VERSION=${CI_TEMPLATE_PYTHON_VERSION}
+            --build-arg POETRY_VERSION=${CI_TEMPLATE_POETRY_VERSION}
+            --build-arg VERSION=${CI_TEMPLATE_VERSION}
+            --secret id=POETRY_HTTP_BASIC_AUTOMATA_PASSWORD
+            --target=final
+          create_repo: true
+          lifecycle_policy_path: .circleci/ecr-lifecycle-policy.json
+          repo_policy_path: .circleci/ecr-repo-policy.json
+          set_repo_policy: true
+          repo_scan_on_push: true
+          skip_when_tags_exist: true
+      - run:
+          name: remove buildx builder
+          command: |
+            # There is a bug in circlci where it attempts to create the same builder multiple times.
+            # This is a workaround to remove the builder before creating it again.
+            docker buildx rm DLC_builder || true

@@ -381,7 +381,7 @@ fn robot_loop(robot_state: Arc<Mutex<RobotState>>) {
 }
 
 fn main() {
-    let listener = TcpListener::bind("127.0.0.1:10100").expect("Failed to bind to address");
+    let listener = TcpListener::bind("0.0.0.0:10100").expect("Failed to bind to address");
     println!("Mock PFlex server running on port 10100");
 
     let robot_state = Arc::new(Mutex::new(RobotState::new()));
