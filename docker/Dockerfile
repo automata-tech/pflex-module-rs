@@ -1,4 +1,4 @@
-FROM rust:1.81 as builder
+FROM rust:1.81 AS builder
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ COPY . .
 RUN cargo build --release
 
 # ---------- Runtime stage ----------
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS final
 
 WORKDIR /app
 
