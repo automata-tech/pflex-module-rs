@@ -1,0 +1,38 @@
+{
+  "rules": [
+    {
+      "rulePriority": 1,
+      "description": "Expire untagged images older than 1 day",
+      "selection": {
+        "tagStatus": "untagged",
+        "countType": "sinceImagePushed",
+        "countUnit": "days",
+        "countNumber": 1
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 2,
+      "description": "Keep last 100 images tagged with main or master",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPrefixList": ["main", "master"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 100
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 3,
+      "description": "Expire feature branch images after 90 days",
+      "selection": {
+        "tagStatus": "tagged",
+        "countType": "sinceImagePushed",
+        "countUnit": "days",
+        "countNumber": 90,
+        "tagPrefixList": ["feature-", "fix-", "pr-"]
+      },
+      "action": { "type": "expire" }
+    }
+  ]
+}
