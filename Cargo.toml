@@ -6,6 +6,10 @@ edition = "2021"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/euanwm/pflex-module-rs"
 
+[[bin]]
+name = "mock-server"
+path = "src/bin/mock_server.rs"
+
 [dependencies]
 log = "0.4.22"
 strum = "0.26.3"
