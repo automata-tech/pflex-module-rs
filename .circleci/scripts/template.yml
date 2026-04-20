@@ -2,16 +2,8 @@ version: 2.1
 
 orbs:
   semantic-release: automata-tech/semantic-release@1
-  atmta-python: automata-tech/python@1
-  python: circleci/python@2
   aws-ecr: circleci/aws-ecr@9
   aws-cli: circleci/aws-cli@5
-  sonarcloud: sonarsource/sonarcloud@3.0.0
-
-executors:
-  python:
-    docker:
-      - image: cimg/python:3.12.2
 
 alias:
   pr-only-filters: &pr-only-filters
@@ -35,16 +27,12 @@ workflows:
           context: ["aws-oidc-roles", "github-automata"]
           dockerfile: docker/Dockerfile
           version: ${CIRCLE_SHA1:0:7}-arm64
-          # requires:
-          # - tests
       - build_amd64_container:
           name: build-amd64-docker-image-on-PR
           filters: *pr-only-filters
           context: ["aws-oidc-roles", "github-automata"]
           dockerfile: docker/Dockerfile
           version: ${CIRCLE_SHA1:0:7}-amd64
-          # requires:
-          # - tests
       - combine_docker_containers_and_push:
           name: combine-arm-and-amd-images-on-PR
           filters: *pr-only-filters
@@ -55,18 +43,11 @@ workflows:
             - build-arm64-docker-image-on-PR
             - build-amd64-docker-image-on-PR
 
-      ####################
-      #   main branch    #
-      ####################
       - semantic-release/release:
           context:
             - semantic-release
             - Slack
           filters: *main-only-filters
-
-  ####################
-  #   semver tags    #
-  ####################
 
   semver-release:
     when:
@@ -157,15 +138,6 @@ jobs:
         type: string
     steps:
       - checkout
-      - atmta-python/login_bash
-      - run:
-          name: Export poetry password secret
-          command: |
-            echo "export POETRY_HTTP_BASIC_AUTOMATA_PASSWORD=$CODEARTIFACT_AUTH_TOKEN" >> $BASH_ENV
-      - run:
-          name: set poetry token to tmpfile
-          command: |
-            echo $CODEARTIFACT_AUTH_TOKEN > /tmp/docker-secrets-codeartifact_auth_token
       - run:
           name: set AWS_ACCOUNT_ID env variable
           command: |
@@ -184,10 +156,7 @@ jobs:
           extra_build_args: >-
             --provenance=false
             --sbom=false
-            --build-arg PYTHON_VERSION=${CI_TEMPLATE_PYTHON_VERSION}
-            --build-arg POETRY_VERSION=${CI_TEMPLATE_POETRY_VERSION}
-            --build-arg VERSION=${CI_TEMPLATE_VERSION}
-            --secret id=POETRY_HTTP_BASIC_AUTOMATA_PASSWORD
+            --build-arg RUST_VERSION=${CI_TEMPLATE_RUST_VERSION}
             --target=final
           create_repo: true
           lifecycle_policy_path: .circleci/ecr-lifecycle-policy.json
@@ -198,8 +167,6 @@ jobs:
       - run:
           name: remove buildx builder
           command: |
-            # There is a bug in circlci where it attempts to create the same builder multiple times.
-            # This is a workaround to remove the builder before creating it again.
             docker buildx rm DLC_builder || true
 
   build_amd64_container:
@@ -207,24 +174,16 @@ jobs:
       AWS_DEFAULT_REGION: eu-west-1
     working_directory: ~/project
     docker:
-      - image: cimg/python:3.10.14
+      - image: cimg/base:2024.02
     parameters:
       version:
         type: string
       dockerfile:
         type: string
     steps:
-      - setup_remote_docker
+      - setup_remote_docker:
+          docker_layer_caching: true
       - checkout
-      - atmta-python/login_bash
-      - run:
-          name: Export poetry password secret
-          command: |
-            echo "export POETRY_HTTP_BASIC_AUTOMATA_PASSWORD=$CODEARTIFACT_AUTH_TOKEN" >> $BASH_ENV
-      - run:
-          name: set poetry token to tmpfile
-          command: |
-            echo $CODEARTIFACT_AUTH_TOKEN > /tmp/docker-secrets-codeartifact_auth_token
       - run:
           name: set AWS_ACCOUNT_ID env variable
           command: |
@@ -243,10 +202,7 @@ jobs:
           extra_build_args: >-
             --provenance=false
             --sbom=false
-            --build-arg PYTHON_VERSION=${CI_TEMPLATE_PYTHON_VERSION}
-            --build-arg POETRY_VERSION=${CI_TEMPLATE_POETRY_VERSION}
-            --build-arg VERSION=${CI_TEMPLATE_VERSION}
-            --secret id=POETRY_HTTP_BASIC_AUTOMATA_PASSWORD
+            --build-arg RUST_VERSION=${CI_TEMPLATE_RUST_VERSION}
             --target=final
           create_repo: true
           lifecycle_policy_path: .circleci/ecr-lifecycle-policy.json
@@ -257,6 +213,4 @@ jobs:
       - run:
           name: remove buildx builder
           command: |
-            # There is a bug in circlci where it attempts to create the same builder multiple times.
-            # This is a workaround to remove the builder before creating it again.
             docker buildx rm DLC_builder || true

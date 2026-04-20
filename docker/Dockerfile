@@ -1,24 +1,27 @@
-FROM rust:1.81 AS builder
+ARG RUST_VERSION=1.81
+
+FROM rust:${RUST_VERSION} AS builder
 
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && echo "fn main() {}" > src/main.rs
+RUN mkdir -p src/bin && echo "fn main() {}" > src/bin/mock_server.rs
 RUN cargo build --release || true
 
 COPY . .
-
-RUN cargo build --release
+RUN touch src/bin/mock_server.rs && cargo build --release
 
 # ---------- Runtime stage ----------
 FROM debian:bookworm-slim AS final
 
+RUN adduser --system --no-create-home nonroot
+
 WORKDIR /app
 
-# Copy the correct binary name
 COPY --from=builder /app/target/release/mock-server /usr/local/bin/mock-server
 
 EXPOSE 10100
 
-# Run the correct binary
+USER nonroot
+
 CMD ["mock-server"]
