@@ -138,6 +138,10 @@ jobs:
         type: string
     steps:
       - checkout
+      - aws-cli/setup:
+          role_arn: ${AWS_OIDC_ROLE_ARN_ATMTA028}
+          role_session_name: ${CIRCLE_PROJECT_REPONAME}
+          region: ${AWS_DEFAULT_REGION}
       - run:
           name: set AWS_ACCOUNT_ID env variable
           command: |
@@ -184,6 +188,10 @@ jobs:
       - setup_remote_docker:
           docker_layer_caching: true
       - checkout
+      - aws-cli/setup:
+          role_arn: ${AWS_OIDC_ROLE_ARN_ATMTA028}
+          role_session_name: ${CIRCLE_PROJECT_REPONAME}
+          region: ${AWS_DEFAULT_REGION}
       - run:
           name: set AWS_ACCOUNT_ID env variable
           command: |
