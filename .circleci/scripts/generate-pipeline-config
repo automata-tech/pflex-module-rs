@@ -2,15 +2,11 @@
 
 set -euo pipefail
 
-PYTHON_VERSION=$(cat .python-version) #Python Version to install
-POETRY_VERSION="$(cat .tool-versions | grep poetry | cut -d ' ' -f 2)"
+RUST_VERSION="$(grep rust .tool-versions | cut -d ' ' -f 2)"
 VERSION=${CIRCLE_TAG:-${CIRCLE_SHA1:0:7}}
 
-# Use \$ to escape the variables to be replaced when the pipeline is running
-# eg: ${VERSION} -> \${VERSION}
-
 mkdir -p .circleci/configs/
-CI_TEMPLATE_PYTHON_VERSION=${PYTHON_VERSION} \
-    CI_TEMPLATE_POETRY_VERSION=${POETRY_VERSION} \
+
+CI_TEMPLATE_RUST_VERSION=${RUST_VERSION} \
     CI_TEMPLATE_VERSION=${VERSION} \
-    envsubst '$CI_TEMPLATE_PYTHON_VERSION $CI_TEMPLATE_POETRY_VERSION $CI_TEMPLATE_VERSION' < .circleci/scripts/template.yml > .circleci/configs/generated_config.yml
+    envsubst '$CI_TEMPLATE_RUST_VERSION $CI_TEMPLATE_VERSION' < .circleci/scripts/template.yml > .circleci/configs/generated_config.yml
