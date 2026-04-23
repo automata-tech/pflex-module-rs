@@ -21,6 +21,9 @@ alias:
 workflows:
   main:
     jobs:
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # > Pull Requests
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       - build_arm64_container:
           name: build-arm64-docker-image-on-PR
           filters: *pr-only-filters
@@ -43,33 +46,30 @@ workflows:
             - build-arm64-docker-image-on-PR
             - build-amd64-docker-image-on-PR
 
+      # ~~~~~~~~~~~~~~
+      # > Main Branch
+      # ~~~~~~~~~~~~~~
       - semantic-release/release:
           context:
             - semantic-release
             - Slack
           filters: *main-only-filters
 
-  semver-release:
-    when:
-      and:
-        - matches:
-            pattern: /^v\d+\.\d+\.\d+$/
-            value: << pipeline.git.tag >>
-    jobs:
+      # ~~~~~~~~~~~~~~~~~~~~~~~~
+      # > Semantic Release Tags
+      # ~~~~~~~~~~~~~~~~~~~~~~~~
       - build_arm64_container:
           name: build-arm64-docker-image-SEMVER
           filters: *semver-tags-only-filters
           context: ["aws-oidc-roles", "github-automata"]
           dockerfile: docker/Dockerfile
           version: << pipeline.git.tag >>-arm64
-
       - build_amd64_container:
           name: build-amd64-docker-image-SEMVER
           filters: *semver-tags-only-filters
           context: ["aws-oidc-roles", "github-automata"]
           dockerfile: docker/Dockerfile
           version: << pipeline.git.tag >>-amd64
-
       - combine_docker_containers_and_push:
           name: combine-arm-and-amd-images-SEMVER
           filters: *semver-tags-only-filters
