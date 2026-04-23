@@ -1,5 +1,12 @@
 # Changelog #
 
+# [1.1.0](https://github.com/automata-tech/pflex-module-rs/compare/v1.0.1...v1.1.0) (2026-04-23)
+
+
+### Features
+
+* create docker image ([#3](https://github.com/automata-tech/pflex-module-rs/issues/3)) ([c38b243](https://github.com/automata-tech/pflex-module-rs/commit/c38b243798455c42a49d3eca1341422c4f9a13a9))
+
 ## [1.0.1](https://github.com/automata-tech/pflex-module-rs/compare/v1.0.0...v1.0.1) (2025-08-28)
 
 
