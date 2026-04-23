@@ -1,5 +1,12 @@
 # Changelog #
 
+## [1.1.1](https://github.com/automata-tech/pflex-module-rs/compare/v1.1.0...v1.1.1) (2026-04-23)
+
+
+### Bug Fixes
+
+* CI release tags ([#4](https://github.com/automata-tech/pflex-module-rs/issues/4)) ([80df343](https://github.com/automata-tech/pflex-module-rs/commit/80df3438e67ac6724c340776181a8c51719cb482))
+
 # [1.1.0](https://github.com/automata-tech/pflex-module-rs/compare/v1.0.1...v1.1.0) (2026-04-23)
 
 
